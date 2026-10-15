@@ -33,7 +33,7 @@ function About() {
                 <div className="col-md-6 col-lg-6 col-xl-6">
                   <div className="d-flex">
                     <div>
-                      <i className="fas fa-heart fa-3x text-primary"></i>
+                      <i className="fas fa-heart fa-3x text-secondary"></i>
                     </div>
 
                     <div className="ms-4">
@@ -52,7 +52,7 @@ function About() {
                 <div className="col-md-6 col-lg-6 col-xl-6">
                   <div className="d-flex">
                     <div>
-                      <i className="fas fa-spa fa-3x text-primary"></i>
+                      <i className="fas fa-spa fa-3x text-secondary"></i>
                     </div>
 
                     <div className="ms-4">
@@ -80,7 +80,7 @@ function About() {
                 {/* Contact */}
                 <div className="col-sm-6">
                   <div className="d-flex">
-                    <i className="fas fa-phone-alt fa-2x text-primary me-4"></i>
+                    <i className="fas fa-phone-alt fa-2x text-secondary me-4"></i>
 
                     <div>
                       <h4>Get In Touch</h4>

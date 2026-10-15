@@ -6,6 +6,7 @@ import Mfa_otp from "./components/authentication/Mfa_otp";
 import "./App.css";
 import Home from "./components/Dashboard/Home";
 import Home_section from "./components/Dashboard/Home_section";
+import About from "./components/About/About";
 
 function App() {
   return (
@@ -29,6 +30,8 @@ function App() {
 
         <Route path="/home"  element={<Home/>}/>
         <Route path="/home_section" element={<Home_section/>}/>
+
+        <Route path='/about' element={<About/>}/>
       </Routes>
   );
 }
