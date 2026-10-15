@@ -12,7 +12,13 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Signin
+from .models import Signin, Appointment
+
+
+from rest_framework import generics, status
+from rest_framework.response import Response
+from .serializers import AppointmentSerializer
+
 
 
 def json_error(message, status=400):
@@ -315,4 +321,18 @@ def test_email(request):
             "Unable to send test email. "
             "Check your SMTP configuration.",
             500,
+        )
+
+
+class AppointmentCreateView(generics.CreateAPIView):
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"message": "Appointment booked successfully!", "data": serializer.data},
+            status=status.HTTP_201_CREATED,
         )
