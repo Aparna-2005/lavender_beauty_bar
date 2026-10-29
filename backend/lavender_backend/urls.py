@@ -11,4 +11,10 @@ urlpatterns = [
     path( "api/token/refresh/", TokenRefreshView.as_view(),  name="token_refresh"),
 
     path("appointments/", AppointmentCreateView.as_view(), name="appointment-create"),
+
+    path("get_services", views.get_services, name="get_services"),
+    path("add_service", views.add_service, name="add_service"),
+
+    path("get_courses", views.get_courses, name="get_courses"),
+    path("add_course", views.add_course, name="add_course"),
 ]

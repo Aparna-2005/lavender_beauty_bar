@@ -103,7 +103,7 @@ function About() {
             <div className="bg-primary rounded position-relative overflow-hidden">
 
               <img
-                src="/images/logo.png"
+                src="/images/about_image.jpeg"
                 className="img-fluid rounded w-100"
                 alt="Lavender Beauty Bar"
               />

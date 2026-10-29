@@ -50,7 +50,7 @@ body {
     font-weight: 400;
     line-height: 1.5;
     color: #e9e0e0;
-    background-color: #a66cc0;
+    background-color: #985DB5;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0)
 }
@@ -8288,7 +8288,7 @@ fieldset:disabled .btn {
 }
 
 .text-primary {
-    color: #c04cfd !important
+    color: #9B70B5 !important
 }
 
 .text-secondary {

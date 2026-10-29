@@ -43,8 +43,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    "rest_framework",
     'lavender_backend',
-    'rest_framework'
 ]
 
 MIDDLEWARE = [
@@ -189,3 +189,13 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 
 }
+
+
+SERVICE_IMAGES_DIR = (
+    BASE_DIR.parent.parent
+    / "Lavander"
+    / "frontend"
+    / "public"
+    / "images"
+    / "services"
+)

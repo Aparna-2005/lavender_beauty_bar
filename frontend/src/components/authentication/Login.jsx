@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Formik, Form, Field, ErrorMessage } from "formik";
@@ -5,9 +6,7 @@ import { z } from "zod";
 import "./Styles.css";
 
 const API_URL = "http://127.0.0.1:8000";
-const DEFAULT_OTP_LIFETIME_MS = 5 * 60 * 1000; // fallback if backend sends no expiry
 
-// Zod validation schema
 const LoginSchema = z.object({
   email: z
     .string()
@@ -17,13 +16,10 @@ const LoginSchema = z.object({
 
   password: z
     .string()
-    .min(1, "Password is required")
-    .min(6, "Password must be at least 6 characters"),
-
+    .min(1, "Password is required"),
   rememberMe: z.boolean(),
 });
 
-// Formik validation using Zod
 const validateLogin = (values) => {
   const result = LoginSchema.safeParse(values);
 
@@ -44,73 +40,146 @@ const validateLogin = (values) => {
   return errors;
 };
 
-// Work out when the OTP expires, based on whatever the backend returns
 const getOtpExpiry = (data) => {
   const fromServer =
     data.otp_expires_at ||
     data.otp_session_time ||
+    data.otp_sessionTime ||
     data.expires_at;
 
-  if (fromServer && !Number.isNaN(new Date(fromServer).getTime())) {
-    return new Date(fromServer).toISOString();
+  if (fromServer) {
+    const parsedDate = new Date(fromServer);
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString();
+    }
   }
 
-  if (typeof data.expires_in === "number") {
-    return new Date(Date.now() + data.expires_in * 1000).toISOString();
+  if (
+    typeof data.expires_in === "number" &&
+    Number.isFinite(data.expires_in) &&
+    data.expires_in > 0
+  ) {
+    return new Date(
+      Date.now() + data.expires_in * 1000
+    ).toISOString();
   }
 
-  return new Date(Date.now() + DEFAULT_OTP_LIFETIME_MS).toISOString();
+  // Fallback: backend OTP lifetime is 5 minutes.
+  return new Date(
+    Date.now() + 5 * 60 * 1000
+  ).toISOString();
 };
 
 export default function Login() {
   const navigate = useNavigate();
+
   const [serverError, setServerError] = useState("");
 
-  const handleLogin = async (values, { setSubmitting }) => {
-    setServerError("");
+ 
+const handleLogin = async (values, { setSubmitting }) => {
+  setServerError("");
 
-    try {
-      const res = await fetch(`${API_URL}/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+  try {
+    const res = await fetch(`${API_URL}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      // Required for Django session authentication.
+      // credentials: "include",
+
+      body: JSON.stringify({
+        email: values.email.trim(),
+        password: values.password,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      setServerError(
+        data.message || "Invalid email or password."
+      );
+      return;
+    }
+
+    // ---------------------------------------
+    // ADMIN LOGIN: BYPASS OTP
+    // ---------------------------------------
+    if (data.role === "admin") {
+      // Store role and superuser permission flag.
+      localStorage.setItem("role", "admin");
+
+      localStorage.setItem( "superuser", String(data.superuser === true));
+
+      localStorage.setItem( "is_staff",String(data.is_staff === true));
+
+      localStorage.setItem("user_id", String(data.user_id));
+
+      localStorage.setItem("username", data.username || "");
+
+      localStorage.setItem("email", data.email || values.email.trim());
+
+      // Clear any previous OTP challenge.
+      sessionStorage.removeItem("otp_user_id");
+      sessionStorage.removeItem("otp_email");
+      sessionStorage.removeItem("otp_sessionTime");
+      sessionStorage.removeItem("otp_remember");
+
+      // Redirect admin to home.
+      navigate("/home", {
+        replace: true,
+        state: {
+          userId: data.user_id,
+          username: data.username,
+          email: data.email,
+          superuser: data.superuser === true,
         },
-        body: JSON.stringify({
-          email: values.email.trim(),
-          password: values.password,
-        }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      return;
+    }
 
-      if (!res.ok || !data.success) {
-        setServerError(data.message || "Invalid email or password");
-        return;
-      }
+    // ---------------------------------------
+    // NORMAL USER: REQUIRE OTP
+    // ---------------------------------------
+    if (data.role === "user" && data.user_id != null) {
+      // Do not retain previous admin privileges.
+      localStorage.removeItem("superuser");
+      localStorage.setItem("role", "user");
+      localStorage.removeItem("is_staff");
 
       const otpSessionTime = getOtpExpiry(data);
+      const userEmail = data.email || values.email.trim();
 
-      // Persist the OTP challenge (survives a refresh on the OTP page)
-      sessionStorage.setItem("otp_user_id", String(data.user_id));
-      sessionStorage.setItem("otp_email", data.email || values.email.trim());
-      sessionStorage.setItem("otp_sessionTime", otpSessionTime);
-      sessionStorage.setItem("otp_remember", String(values.rememberMe));
+      sessionStorage.setItem("otp_user_id", String(data.user_id) );
+      sessionStorage.setItem("otp_email", userEmail );
+      sessionStorage.setItem( "otp_sessionTime", otpSessionTime );
+      sessionStorage.setItem( "otp_remember", String(values.rememberMe));
 
       navigate("/Mfa_otp", {
+        replace: true,
         state: {
           userId: String(data.user_id),
-          email: data.email || values.email.trim(),
+          email: userEmail,
           otpSessionTime,
           rememberMe: values.rememberMe,
         },
       });
-    } catch (error) {
-      console.error("Login error:", error);
-      setServerError("Unable to connect to the server. Please try again.");
-    } finally {
-      setSubmitting(false);
+
+      return;
     }
-  };
+    setServerError("Unexpected response from server.");
+  } catch (error) {
+    setServerError( "Unable to connect to the server. Please try again." );
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+
 
   return (
     <main className="auth-page">
@@ -138,11 +207,8 @@ export default function Login() {
         >
           {({ isSubmitting, errors, touched }) => (
             <Form noValidate>
-              {/* Email */}
               <div className="auth-group">
-                <label className="auth-label" htmlFor="email">
-                  Email
-                </label>
+                <label className="auth-label" htmlFor="email" > Email </label>
 
                 <Field
                   id="email"
@@ -151,7 +217,9 @@ export default function Login() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   className={`auth-input ${
-                    errors.email && touched.email ? "is-invalid" : ""
+                    errors.email && touched.email
+                      ? "is-invalid"
+                      : ""
                   }`}
                 />
 
@@ -162,9 +230,11 @@ export default function Login() {
                 />
               </div>
 
-              {/* Password */}
               <div className="auth-group">
-                <label className="auth-label" htmlFor="password">
+                <label
+                  className="auth-label"
+                  htmlFor="password"
+                >
                   Password
                 </label>
 
@@ -175,7 +245,9 @@ export default function Login() {
                   placeholder="Enter your password"
                   autoComplete="current-password"
                   className={`auth-input ${
-                    errors.password && touched.password ? "is-invalid" : ""
+                    errors.password && touched.password
+                      ? "is-invalid"
+                      : ""
                   }`}
                 />
 
@@ -186,19 +258,27 @@ export default function Login() {
                 />
               </div>
 
-              {/* Remember Me and Forgot Password */}
               <div className="auth-row">
-                <label className="auth-check" htmlFor="rememberMe">
-                  <Field id="rememberMe" type="checkbox" name="rememberMe" />
+                <label
+                  className="auth-check"
+                  htmlFor="rememberMe"
+                >
+                  <Field
+                    id="rememberMe"
+                    type="checkbox"
+                    name="rememberMe"
+                  />
                   Remember me
                 </label>
 
-                <Link to="/forgot-password" className="auth-link">
+                <Link
+                  to="/forgot-password"
+                  className="auth-link"
+                >
                   Forgot password?
                 </Link>
               </div>
 
-              {/* Submit */}
               <button
                 type="submit"
                 className="auth-btn"

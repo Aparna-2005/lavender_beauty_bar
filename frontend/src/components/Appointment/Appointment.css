@@ -1,0 +1,208 @@
+/* Background overlay */
+.appointment-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(35, 20, 40, 0.58);
+  backdrop-filter: blur(3px);
+  animation: appointmentFadeIn 0.25s ease;
+}
+
+/* Right-side drawer */
+.appointment-drawer {
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  overflow-y: auto;
+  background: #ffffff;
+  box-shadow: -12px 0 40px rgba(64, 35, 68, 0.2);
+  animation: appointmentSlideIn 0.35s ease;
+  overscroll-behavior: contain;
+}
+
+/* Header */
+.appointment-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 28px 30px 24px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #402344, #9B70B5);
+}
+
+.appointment-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: #E6D3F2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.appointment-header h2 {
+  margin: 0 0 8px;
+  color: #ffffff;
+  font-size: 27px;
+  font-weight: 700;
+}
+
+.appointment-header p {
+  margin: 0;
+  color: #f5eafa;
+  font-size: 14px;
+}
+
+/* Close button */
+.appointment-close {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  color: #ffffff;
+  background: transparent;
+  font-size: 27px;
+  line-height: 1;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.appointment-close:hover:not(:disabled) {
+  color: #402344;
+  background: #E6D3F2;
+}
+
+.appointment-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Form content */
+.appointment-content {
+  padding: 28px 30px 35px;
+}
+
+.appointment-content .form-label {
+  margin-bottom: 7px;
+  color: #402344;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.appointment-content .form-control,
+.appointment-content .form-select {
+  min-height: 46px;
+  border: 1px solid #ddcbe7;
+  border-radius: 10px;
+  color: #402344;
+  background-color: #ffffff;
+  font-size: 14px;
+  transition: border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.appointment-content textarea.form-control {
+  min-height: auto;
+  resize: vertical;
+}
+
+.appointment-content .form-control::placeholder {
+  color: #9a8ba0;
+}
+
+.appointment-content .form-control:focus,
+.appointment-content .form-select:focus {
+  border-color: #9B70B5;
+  box-shadow: 0 0 0 0.2rem rgba(155, 112, 181, 0.18);
+}
+
+/* Validation */
+.appointment-content .is-invalid {
+  border-color: #dc3545;
+}
+
+.appointment-content .invalid-feedback {
+  font-size: 12px;
+}
+
+/* Confirm button */
+.appointment-content .btn-primary {
+  border: 1px solid #402344;
+  color: #ffffff;
+  background: #402344;
+  font-weight: 600;
+  transition: 0.25s ease;
+}
+
+.appointment-content .btn-primary:hover:not(:disabled) {
+  border-color: #9B70B5;
+  background: #9B70B5;
+}
+
+.appointment-content .btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Confirmation note */
+.appointment-note {
+  margin: 15px 0 0;
+  color: #78677e;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* Animations */
+@keyframes appointmentFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appointmentSlideIn {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 576px) {
+  .appointment-drawer {
+    max-width: 100%;
+  }
+
+  .appointment-header {
+    padding: 23px 20px;
+  }
+
+  .appointment-header h2 {
+    font-size: 23px;
+  }
+
+  .appointment-content {
+    padding: 22px 20px 30px;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .appointment-overlay,
+  .appointment-drawer {
+    animation: none;
+  }
+}

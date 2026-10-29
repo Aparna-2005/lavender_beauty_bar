@@ -1,24 +1,34 @@
 
 import json
+import logging
 import secrets
+import os
+import traceback
+
 from datetime import timedelta
+from django.views.decorators.http import require_POST,require_GET
+from django.core.files.storage import FileSystemStorage
 
 from django.conf import settings
+from django.contrib.auth import authenticate, login as django_login
+from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.mail import send_mail
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-
-from rest_framework_simplejwt.tokens import RefreshToken
-
-from .models import Signin, Appointment
-
-
-from rest_framework import generics, status
+from rest_framework import generics
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Q
+
+from .models import *
 from .serializers import AppointmentSerializer
 
+
+
+logger = logging.getLogger(__name__)
 
 
 def json_error(message, status=400):
@@ -33,14 +43,16 @@ def json_error(message, status=400):
 
 def parse_json_body(request):
     try:
-        payload = json.loads(request.body)
+        payload = json.loads(request.body or "{}")
+
+        if not isinstance(payload, dict):
+            return None, json_error("Invalid request data.")
+
+        return payload, None
+
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return None, json_error("Invalid JSON payload.")
+        return None, json_error("Invalid JSON data.")
 
-    if not isinstance(payload, dict):
-        return None, json_error("JSON payload must be an object.")
-
-    return payload, None
 
 @csrf_exempt
 def signin(request):
@@ -90,6 +102,9 @@ def signin(request):
 
 @csrf_exempt
 def login(request):
+
+    print("--------------------------LOGIN------------------------")
+
     if request.method != "POST":
         return json_error("Method not allowed.", 405)
 
@@ -109,35 +124,108 @@ def login(request):
             "Email and password are required."
         )
 
-    # Find the user by email.
+    # --------------------------------------------------
+    # STEP 1: CHECK DJANGO ADMIN / STAFF USER
+    # --------------------------------------------------
+
+    admin_user = User.objects.filter(
+        Q(is_staff=True) | Q(is_superuser=True),
+        email__iexact=email,
+        is_active=True,
+    ).first()
+
+    # Avoid printing passwords or other sensitive data.
+    print("Admin account found:", admin_user is not None)
+
+    if admin_user is not None:
+
+        # Authenticate using Django's configured backend.
+        authenticated_user = authenticate(
+            request,
+            username=admin_user.username,
+            password=password,
+        )
+
+        if (
+            authenticated_user is None
+            or authenticated_user.pk != admin_user.pk
+        ):
+            return json_error(
+                "Invalid email or password.",
+                401,
+            )
+
+        # Admin login without OTP.
+        django_login(request, authenticated_user)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "role": "admin",
+                "message": "Admin login successful.",
+                "user_id": authenticated_user.pk,
+                "username": authenticated_user.username,
+                "email": authenticated_user.email,
+                "redirect_url": "/dashboard",
+                "superuser": authenticated_user.is_superuser,
+            },
+            status=200,
+        )
+
+    # --------------------------------------------------
+    # STEP 2: CHECK NORMAL USER IN SIGNIN TABLE
+    # --------------------------------------------------
+
     user = Signin.objects.filter(
         email__iexact=email
     ).first()
 
-    # Verify the hashed password.
-    if (
-        user is None
-        or not user.password
-        or not check_password(password, user.password)
+    print("Normal user account found:", user is not None)
+
+    if user is None:
+        return json_error(
+            "Invalid email or password.",
+            401,
+        )
+
+    if not user.password or not check_password(
+        password,
+        user.password,
     ):
         return json_error(
             "Invalid email or password.",
             401,
         )
 
-    # Generate a cryptographically random 6-digit OTP.
+    # Status: 0 = Inactive, 1 = Active, 2 = Deleted.
+    if str(user.status) != "1":
+        return json_error(
+            "Your account is inactive. Please contact the administrator.",
+            403,
+        )
+
+    # --------------------------------------------------
+    # STEP 3: GENERATE OTP FOR NORMAL USERS ONLY
+    # --------------------------------------------------
+
     otp = str(secrets.randbelow(900000) + 100000)
 
     expiry_time = timezone.now() + timedelta(minutes=5)
 
-    # Store OTP and expiry in the database.
     user.otp = otp
     user.otp_sessionTime = expiry_time
+
     user.save(
-        update_fields=["otp", "otp_sessionTime"]
+        update_fields=[
+            "otp",
+            "otp_sessionTime",
+        ]
     )
 
-    # Send OTP through configured SMTP.
+    # --------------------------------------------------
+    # STEP 4: SEND OTP EMAIL
+    # --------------------------------------------------
+
     try:
         send_mail(
             subject="Your Login Verification Code",
@@ -152,27 +240,31 @@ def login(request):
         )
 
     except Exception:
-        # Clear OTP if email delivery fails.
         user.otp = None
         user.otp_sessionTime = None
+
         user.save(
-            update_fields=["otp", "otp_sessionTime"]
+            update_fields=[
+                "otp",
+                "otp_sessionTime",
+            ]
         )
 
-        # Log the actual error server-side if needed.
-        import logging
-        logging.getLogger(__name__).exception(
-            "Failed to send login OTP."
-        )
+        logger.exception("Failed to send login OTP.")
 
         return json_error(
             "Unable to send OTP. Please try again.",
             500,
         )
 
+    # --------------------------------------------------
+    # STEP 5: RETURN OTP CHALLENGE TO FRONTEND
+    # --------------------------------------------------
+
     return JsonResponse(
         {
             "success": True,
+            "role": "user",
             "message": "OTP sent successfully.",
             "user_id": user.pk,
             "email": user.email,
@@ -180,6 +272,7 @@ def login(request):
         },
         status=200,
     )
+
 
 
 @csrf_exempt
@@ -336,3 +429,228 @@ class AppointmentCreateView(generics.CreateAPIView):
             {"message": "Appointment booked successfully!", "data": serializer.data},
             status=status.HTTP_201_CREATED,
         )
+
+# Save uploaded files to frontend/public/images/services/
+SERVICE_IMAGES_DIR = settings.SERVICE_IMAGES_DIR
+SERVICE_IMAGES_URL = "/images/services/"
+
+@csrf_exempt
+# @require_POST
+def add_service(request):
+    try:
+        title = request.POST.get("title", "").strip()
+        desc = request.POST.get("desc", "").strip()
+        image = request.FILES.get("image")
+
+        print("Service title:", title)
+        print("Service description:", desc)
+        print("Uploaded image:", image.name if image else None)
+
+        if not title or not desc or not image:
+            return JsonResponse({
+                "success": False,
+                "message": "Please provide service name, description, and image."
+            }, status=400)
+
+        if len(title) > 100:
+            return JsonResponse({
+                "success": False,
+                "message": "Service name cannot exceed 100 characters."
+            }, status=400)
+
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+        extension = os.path.splitext(image.name)[1].lower()
+
+        if extension not in allowed_extensions:
+            return JsonResponse({
+                "success": False,
+                "message": "Only JPG, JPEG, PNG, and WEBP images are allowed."
+            }, status=400)
+
+        if image.size > 5 * 1024 * 1024:
+            return JsonResponse({
+                "success": False,
+                "message": "Image size must be 5 MB or less."
+            }, status=400)
+
+        os.makedirs(SERVICE_IMAGES_DIR, exist_ok=True)
+
+        storage = FileSystemStorage(
+            location=SERVICE_IMAGES_DIR,
+            base_url=SERVICE_IMAGES_URL
+        )
+
+        # Avoid overwriting a file with the same name.
+        saved_filename = storage.save(image.name, image)
+
+        # IMPORTANT:
+        # This assumes your model fields are name, description, image.
+        service = Services.objects.create(
+            name=title,
+            description=desc,
+            image=saved_filename
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "Service added successfully.",
+            "service": {
+                "id": service.id,
+                "title": service.name,
+                "desc": service.description or "",
+                "img": SERVICE_IMAGES_URL + saved_filename
+            }
+        }, status=201)
+
+    except Exception as error:
+        # Check the Django terminal for the actual error.
+        print("ADD SERVICE ERROR:", repr(error))
+
+        return JsonResponse({
+            "success": False,
+            "message": str(error)
+        }, status=500)
+
+
+# --------------------------------------------------
+# GET: Fetch all services
+# URL: /get_services
+# --------------------------------------------------
+
+@require_GET
+def get_services(request):
+    print("__________GET SERVICES__________")
+
+    try:
+        services = Services.objects.all().order_by("-id")
+        services_list = []
+
+        for service in services:
+            image_url = ""
+
+            if service.image:
+                # Use the URL from the model's configured storage.
+                image_url = f"{SERVICE_IMAGES_URL}{service.image.url if hasattr(service.image, 'url') else service.image.name}"
+
+                # React public files should use a relative URL such as
+                # /images/services/hair-spa.jpg.
+                if image_url.startswith("http://") or image_url.startswith("https://"):
+                    # Keep the URL if storage already returns an absolute URL.
+                    pass
+                elif not image_url.startswith("/"):
+                    image_url = f"{SERVICE_IMAGES_URL}{image_url}"
+
+
+            print("Image : ", image_url)
+
+            services_list.append({
+                "id": service.id,
+                "title": service.name,
+                "desc": service.description or "",
+                "img": image_url,
+            })
+
+        return JsonResponse({
+            "success": True,
+            "services": services_list,
+        }, status=200)
+
+    except Exception as error:
+        traceback.print_exc()
+
+        return JsonResponse({
+            "success": False,
+            "message": f"Unable to fetch services: {str(error)}",
+        }, status=500)
+
+
+
+@require_GET
+def get_courses(request):
+    print("__________GET COURSES__________")
+
+    try:
+        courses = Courses.objects.all().order_by("-id")
+        courses_list = []
+
+        print("COURSES : ", courses)
+
+        for courses in courses:
+            courses_list.append({
+                "id": courses.id,
+                "title": courses.name,
+                "desc": courses.description or "",
+                "prize": courses.price,
+                "duration":courses.duration
+            })
+
+        return JsonResponse({
+            "success": True,
+            "services": courses_list,
+        }, status=200)
+
+    except Exception as error:
+        traceback.print_exc()
+
+        return JsonResponse({
+            "success": False,
+            "message": f"Unable to fetch courses: {str(error)}",
+        }, status=500)
+
+@csrf_exempt
+# @require_POST
+def add_course(request):
+    try:
+        title = request.POST.get("title", "").strip()
+        desc = request.POST.get("desc", "").strip()
+        prize = request.POST.get("prize")
+        duration = request.POST.get("duration", "").strip()
+
+        print("Course title:", title)
+        print("Course description:", desc)
+        print("Course duration:", duration)
+        print("Prize: ", prize)
+
+        if not title or not desc or not prize or not duration:
+            return JsonResponse({
+                "success": False,
+                "message": "Please provide course name, description, prize, and duration."
+            }, status=400)
+
+        if len(title) > 100:
+            return JsonResponse({
+                "success": False,
+                "message": "Service name cannot exceed 100 characters."
+            }, status=400)
+
+
+
+        # IMPORTANT:
+        # This assumes your model fields are name, description, image.
+        service = Courses.objects.create(
+            name=title,
+            description=desc,
+            price=prize,
+            duration=duration
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "Course added successfully.",
+            "service": {
+                "id": service.id,
+                "title": service.name,
+                "desc": service.description or "",
+                "prize": service.price,
+                "duration": service.duration
+            }
+        }, status=201)
+
+    except Exception as error:
+        # Check the Django terminal for the actual error.
+        print("ADD COURSE ERROR:", repr(error))
+
+        return JsonResponse({
+            "success": False,
+            "message": str(error)
+        }, status=500)
