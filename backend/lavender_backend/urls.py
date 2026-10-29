@@ -17,4 +17,7 @@ urlpatterns = [
 
     path("get_courses", views.get_courses, name="get_courses"),
     path("add_course", views.add_course, name="add_course"),
+
+
+    path("course_enquiry", views.course_enquiry, name='course_enquiry')
 ]

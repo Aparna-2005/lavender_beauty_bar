@@ -107,3 +107,24 @@ class Courses(models.Model):
     
     def __str__(self):
         return self.name
+
+
+from django.db import models
+
+
+class CourseEnquiry(models.Model):
+    course_name = models.ForeignKey(
+        "Courses",
+        on_delete=models.CASCADE,
+        related_name="enquiries"
+    )
+    student_name = models.CharField(max_length=100)
+    phone = models.CharField(max_length=15)
+    email = models.EmailField(blank=True, null=True)
+    joining_date = models.DateField()
+    message = models.TextField(blank=True, null=True)
+
+    objects = BaseUserManager()
+
+    def __str__(self):
+        return self.student_name

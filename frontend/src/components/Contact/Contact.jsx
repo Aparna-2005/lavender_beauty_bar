@@ -2,13 +2,13 @@ import React from 'react'
 
 function Contact() {
   return (
-     <div className="container-fluid contact py-5">
+     <div className="container-fluid contact py-2">
             <div className="container py-5">
                 <div className="row g-5">
                     <div className="col-xl-6">
                         <div className="wow fadeInUp" data-wow-delay="0.2s">
-                            <div className="bg-light rounded p-5 mb-5">
-                                <h4 className="text-primary mb-4">Get in Touch</h4>
+                            <div className="bg-light rounded p-5">
+                                <h4 className="text-dark text-center mb-4">Get in Touch</h4>
                                 <div className="row g-4">
                                     <div className="col-md-6">
                                         <div className="contact-add-item">
@@ -56,7 +56,7 @@ function Contact() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-light p-5 rounded h-100 wow fadeInUp" data-wow-delay="0.2s">
+                            <div className="bg-light rounded h-100 wow fadeInUp" data-wow-delay="0.2s">
                                 <h4 className="text-secondary text-center">Send Your Message</h4>
                                 {/* <p className="mb-4 text-secondary">The contact form is currently inactive. Get a functional and working contact form with Ajax & PHP in a few minutes. Just copy and paste the files, add a little code and you're done. <a className="text-primary fw-bold" href="https://htmlcodex.com/contact-form">Download Now</a>.</p> */}
                                 <form>

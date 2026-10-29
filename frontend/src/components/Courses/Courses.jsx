@@ -1,30 +1,49 @@
 
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import "./courses.css";
 
 const API_URL = "http://127.0.0.1:8000";
+
+const initialCourseForm = {
+  title: "",
+  desc: "",
+  prize: "",
+  duration: "",
+};
+
+const initialEnquiryForm = {
+  name: "",
+  email: "",
+  phone: "",
+  date: "",
+  message: "",
+};
 
 function Courses() {
   const isSuperuser = localStorage.getItem("superuser") === "true";
 
   const [services, setServices] = useState([]);
-  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Admin course modal
+  const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [imagePreview, setImagePreview] = useState("");
 
-  const [formData, setFormData] = useState({
-    title: "",
-    desc: "",
-    image: null,
-  });
+  const [formData, setFormData] = useState(initialCourseForm);
 
-  // Fetch services from Django.
+  // Student enquiry modal
+  const [showAppointment, setShowAppointment] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [enquiryData, setEnquiryData] = useState(initialEnquiryForm);
+  const [enquiryError, setEnquiryError] = useState("");
+  const [enquirySuccess, setEnquirySuccess] = useState("");
+  const [submittingEnquiry, setSubmittingEnquiry] = useState(false);
+
+  // Fetch courses from Django
   useEffect(() => {
-    const fetchServices = async () => {
+    const fetchCourses = async () => {
       try {
         const response = await fetch(`${API_URL}/get_courses`);
         const data = await response.json();
@@ -43,29 +62,20 @@ function Courses() {
           );
         }
       } catch (err) {
-        console.error("Error fetching services:", err);
+        console.error("Error fetching courses:", err);
         setServices([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchServices();
+    fetchCourses();
   }, []);
 
-  // Handle text inputs and image selection.
-  const handleChange = (e) => {
-    const { name, value, files } = e.target;
+  // ---------------- ADMIN COURSE FORM ----------------
 
-    if (name === "image") {
-
-      setFormData((previous) => ({
-        ...previous,
-      }));
-
-      setError("");
-      return;
-    }
+  const handleCourseChange = (e) => {
+    const { name, value } = e.target;
 
     setFormData((previous) => ({
       ...previous,
@@ -73,41 +83,26 @@ function Courses() {
     }));
   };
 
-  // Reset form fields.
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      desc: "",
-      image: null,
-    });
-
-    setImagePreview("");
-
-    const fileInput = document.getElementById("service-image");
-    if (fileInput) {
-      fileInput.value = "";
-    }
+  const resetCourseForm = () => {
+    setFormData({ ...initialCourseForm });
   };
 
-  // Open popup.
-  const openForm = () => {
-    resetForm();
+  const openCourseForm = () => {
+    resetCourseForm();
     setError("");
     setSuccess("");
     setShowForm(true);
   };
 
-  // Close popup.
-  const closeForm = () => {
+  const closeCourseForm = () => {
     if (saving) return;
 
-    resetForm();
-    setError("");
     setShowForm(false);
+    setError("");
+    resetCourseForm();
   };
 
-  // Add service using Django API.
-  const handleAddService = async (e) => {
+  const handleAddCourse = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
@@ -119,14 +114,13 @@ function Courses() {
 
     const title = formData.title.trim();
     const desc = formData.desc.trim();
-    const prize = formData.prize;
-    const duration = formData.duration;
+    const prize = formData.prize.trim();
+    const duration = formData.duration.trim();
 
     if (!title || !desc || !prize || !duration) {
-      setError("Please enter the course name, description, prize, and duration.");
+      setError("Please fill in all course fields.");
       return;
     }
-
 
     const payload = new FormData();
     payload.append("title", title);
@@ -134,7 +128,6 @@ function Courses() {
     payload.append("prize", prize);
     payload.append("duration", duration);
 
-    console.log("Data : ", payload)
     setSaving(true);
 
     try {
@@ -143,15 +136,7 @@ function Courses() {
         body: payload,
       });
 
-      let data;
-
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error(
-          `Invalid server response (${response.status}).`
-        );
-      }
+      const data = await response.json();
 
       if (!response.ok || !data.success) {
         throw new Error(
@@ -160,17 +145,14 @@ function Courses() {
       }
 
       if (!data.course) {
-        throw new Error("The server did not return the saved course.");
+        throw new Error(
+          "The server did not return the saved course."
+        );
       }
 
-      // Add the saved course to the existing array.
-      setServices((previous) => [
-        ...(Array.isArray(previous) ? previous : []),
-        data.course,
-      ]);
-
-      resetForm();
+      setServices((previous) => [...previous, data.course]);
       setShowForm(false);
+      resetCourseForm();
       setSuccess("Course added successfully!");
     } catch (err) {
       console.error("Add course error:", err);
@@ -179,6 +161,110 @@ function Courses() {
       setSaving(false);
     }
   };
+
+  // ---------------- STUDENT ENQUIRY FORM ----------------
+
+  const openAppointment = (courseName) => {
+    setSelectedCourse(courseName);
+    setEnquiryData({ ...initialEnquiryForm });
+    setEnquiryError("");
+    setEnquirySuccess("");
+    setShowAppointment(true);
+  };
+
+  const closeAppointment = () => {
+    if (submittingEnquiry) return;
+
+    setShowAppointment(false);
+    setEnquiryError("");
+    setEnquirySuccess("");
+  };
+
+  const handleEnquiryChange = (e) => {
+    const { name, value } = e.target;
+
+    setEnquiryData((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+const handleEnquirySubmit = async (e) => {
+  e.preventDefault();
+
+  setEnquiryError("");
+  setEnquirySuccess("");
+
+  if (!enquiryData.name.trim()) {
+    setEnquiryError("Please enter your full name.");
+    return;
+  }
+
+  if (!/^[0-9]{10}$/.test(enquiryData.phone)) {
+    setEnquiryError("Please enter a valid 10-digit phone number.");
+    return;
+  }
+
+  if (!enquiryData.date) {
+    setEnquiryError("Please select your preferred joining date.");
+    return;
+  }
+
+  setSubmittingEnquiry(true);
+
+  try {
+    const response = await fetch(
+      `${API_URL}/course_enquiry`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          course_name: selectedCourse,
+          student_name: enquiryData.name.trim(),
+          phone: enquiryData.phone,
+          email: enquiryData.email.trim(),
+          joining_date: enquiryData.date,
+          message: enquiryData.message.trim(),
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.message || "Unable to submit your enquiry."
+      );
+    }
+
+    setEnquirySuccess(data.message);
+
+    setEnquiryData({
+      name: "",
+      email: "",
+      phone: "",
+      date: "",
+      message: "",
+    });
+  } catch (error) {
+    console.error("Course enquiry error:", error);
+
+    setEnquiryError(
+      error.message || "Unable to connect to the server."
+    );
+  } finally {
+    setSubmittingEnquiry(false);
+  }
+};
+  const today = new Date();
+  const minimumDate = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
   return (
     <div className="container-fluid service py-1">
       <div className="container py-5">
@@ -188,33 +274,36 @@ function Courses() {
           className="text-center mx-auto pb-5"
           style={{ maxWidth: "800px" }}
         >
-          <h1 className="display-5 mb-4">We offered courses</h1>
+          <h1 className="display-5 mb-4">We Offer Courses</h1>
 
           <p className="mb-0 text-light">
-            Discover your passion for beauty with Lavender Beauty Bar. Join our professional beauty courses, learn from experienced trainers, and develop the skills to build your future in the beauty industry.
+            Discover your passion for beauty with Lavender Beauty Bar.
+            Join our professional beauty courses, learn from experienced
+            trainers, and develop the skills to build your future in the
+            beauty industry.
           </p>
 
           {isSuperuser && (
             <button
               type="button"
               className="btn btn-primary rounded-pill mt-4"
-              onClick={openForm}
+              onClick={openCourseForm}
             >
-              + Add New Courses
+              + Add New Course
             </button>
           )}
         </div>
 
-        {/* Success message */}
+        {/* Admin success message */}
         {success && (
           <div className="alert alert-success" role="status">
             {success}
           </div>
         )}
 
-        {/* Loading message */}
+        {/* Loading */}
         {loading && (
-          <p className="text-center">Loading services...</p>
+          <p className="text-center">Loading courses...</p>
         )}
 
         {/* Empty state */}
@@ -224,7 +313,7 @@ function Courses() {
           </p>
         )}
 
-        {/* Service cards */}
+        {/* Course cards */}
         <div className="row g-4">
           {!loading &&
             services.map((service, index) => (
@@ -233,25 +322,38 @@ function Courses() {
                 className="col-md-6 col-lg-4"
               >
                 <div className="service-item h-100">
-
                   <div className="rounded-bottom p-4">
-                    <h4 className="mb-4 text-dark">
-                      {service.title}
-                    </h4>
+                    <div className="d-flex justify-content-between align-items-start gap-2">
+                      <h4 className="text-dark">
+                        {service.title}
+                      </h4>
 
-                    <p className="mb-4 section-subtitle">
+                      <h5 className="section-subtitle mb-3">
+                        {service.prize}
+                      </h5>
+                    </div>
+
+                    <p className="section-subtitle mb-2">
                       {service.desc}
                     </p>
 
-                    <Link
-                      className=" rounded-pill text-secondary"
-                      to={`/appointment?service=${encodeURIComponent(
-                        service.title || ""
-                      )}`}
-                    > 
-                      Explore courses 
-                      <i className="fas fa-arrow-right px-2"></i>
-                    </Link>
+                    {service.duration && (
+                      <p className="course-duration mb-3">
+                        <i className="far fa-clock me-2"></i>
+                        {service.duration}
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      className="course-explore-btn"
+                      onClick={() =>
+                        openAppointment(service.title || "")
+                      }
+                    >
+                      Explore Courses
+                      <i className="fas fa-arrow-right ms-2"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -259,13 +361,14 @@ function Courses() {
         </div>
       </div>
 
-      {/* Add service popup modal */}
+      {/* ---------------- ADMIN ADD COURSE MODAL ---------------- */}
+
       {isSuperuser && showForm && (
         <div
           className="service-modal-overlay"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
-              closeForm();
+              closeCourseForm();
             }
           }}
         >
@@ -273,12 +376,11 @@ function Courses() {
             className="service-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="add-service-title"
+            aria-labelledby="add-course-title"
           >
-            {/* Modal header */}
             <div className="service-modal-header">
               <div>
-                <h3 id="add-service-title">Add New Course</h3>
+                <h3 id="add-course-title">Add New Course</h3>
                 <p className="mb-0">
                   Add a course to Lavender Beauty Bar.
                 </p>
@@ -287,18 +389,16 @@ function Courses() {
               <button
                 type="button"
                 className="service-modal-close"
-                aria-label="Close popup"
+                aria-label="Close modal"
                 disabled={saving}
-                onClick={closeForm}
+                onClick={closeCourseForm}
               >
                 &times;
               </button>
             </div>
 
-            {/* Modal form */}
-            <form onSubmit={handleAddService}>
+            <form onSubmit={handleAddCourse}>
               <div className="service-modal-body">
-
                 {error && (
                   <div className="alert alert-danger" role="alert">
                     {error}
@@ -306,13 +406,9 @@ function Courses() {
                 )}
 
                 <div className="mb-3">
-                  <label
-                    htmlFor="service-title"
-                    className="form-label"
-                  >
+                  <label htmlFor="course-title" className="form-label">
                     Course Name
                   </label>
-
                   <input
                     id="course-title"
                     type="text"
@@ -320,48 +416,40 @@ function Courses() {
                     className="form-control"
                     placeholder="e.g. Mehandhi"
                     value={formData.title}
-                    onChange={handleChange}
+                    onChange={handleCourseChange}
                     maxLength={100}
                     required
                   />
                 </div>
 
                 <div className="mb-3">
-                  <label
-                    htmlFor="service-desc"
-                    className="form-label"
-                  >
+                  <label htmlFor="course-desc" className="form-label">
                     Description
                   </label>
-
                   <textarea
-                    id="service-desc"
+                    id="course-desc"
                     name="desc"
                     className="form-control"
-                    rows="2"
-                    placeholder="Enter service description"
+                    rows="3"
+                    placeholder="Enter course description"
                     value={formData.desc}
-                    onChange={handleChange}
+                    onChange={handleCourseChange}
                     required
                   />
                 </div>
 
                 <div className="mb-3">
-                  <label
-                    htmlFor="course-prize"
-                    className="form-label"
-                  >
-                    Prize
+                  <label htmlFor="course-prize" className="form-label">
+                    Price
                   </label>
-
                   <input
                     id="course-prize"
                     type="text"
                     name="prize"
                     className="form-control"
-                    placeholder="e.g. 1000"
+                    placeholder="e.g. ₹1000"
                     value={formData.prize}
-                    onChange={handleChange}
+                    onChange={handleCourseChange}
                     maxLength={100}
                     required
                   />
@@ -374,28 +462,26 @@ function Courses() {
                   >
                     Duration
                   </label>
-
                   <input
                     id="course-duration"
                     type="text"
                     name="duration"
                     className="form-control"
-                    placeholder="e.g. 2 hours"
+                    placeholder="e.g. 2 months"
                     value={formData.duration}
-                    onChange={handleChange}
+                    onChange={handleCourseChange}
                     maxLength={100}
                     required
                   />
                 </div>
               </div>
 
-              {/* Modal footer */}
               <div className="service-modal-footer">
                 <button
                   type="button"
                   className="btn btn-secondary rounded-pill px-4"
                   disabled={saving}
-                  onClick={closeForm}
+                  onClick={closeCourseForm}
                 >
                   Cancel
                 </button>
@@ -405,11 +491,200 @@ function Courses() {
                   className="btn btn-primary rounded-pill px-4"
                   disabled={saving}
                 >
-                  {saving ? "Saving..." : "Save Service"}
+                  {saving ? "Saving..." : "Save Course"}
                 </button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* ---------------- RIGHT-SIDE ENQUIRY MODAL ---------------- */}
+
+      {showAppointment && (
+        <div
+          className="course-enquiry-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              closeAppointment();
+            }
+          }}
+        >
+          <aside
+            className="course-enquiry-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="enquiry-title"
+          >
+            {/* Modal header */}
+            <div className="course-enquiry-header">
+              <div>
+                <span className="course-enquiry-eyebrow">
+                  LAVENDER BEAUTY BAR
+                </span>
+
+                <h3 id="enquiry-title">Course Enquiry</h3>
+
+                <p>
+                  Begin your beauty journey with us.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="course-enquiry-close"
+                aria-label="Close enquiry form"
+                disabled={submittingEnquiry}
+                onClick={closeAppointment}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Form body */}
+            <div className="course-enquiry-body">
+              {enquirySuccess ? (
+                <div className="course-enquiry-success" role="status">
+                  <i className="fas fa-check-circle"></i>
+                  <h4>Thank You!</h4>
+                  <p>{enquirySuccess}</p>
+
+                  <button
+                    type="button"
+                    className="course-submit-btn"
+                    onClick={closeAppointment}
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleEnquirySubmit}>
+                  {enquiryError && (
+                    <div className="alert alert-danger" role="alert">
+                      {enquiryError}
+                    </div>
+                  )}
+
+                  <div className="mb-3">
+                    <label htmlFor="enquiry-course">
+                      Selected Course
+                    </label>
+                    <input
+                      id="enquiry-course"
+                      type="text"
+                      className="form-control"
+                      value={selectedCourse}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label htmlFor="enquiry-name">
+                      Full Name *
+                    </label>
+                    <input
+                      id="enquiry-name"
+                      type="text"
+                      name="name"
+                      className="form-control"
+                      placeholder="Enter your full name"
+                      value={enquiryData.name}
+                      onChange={handleEnquiryChange}
+                      maxLength={100}
+                      autoComplete="name"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label htmlFor="enquiry-email">
+                      Email Address *
+                    </label>
+                    <input
+                      id="enquiry-email"
+                      type="email"
+                      name="email"
+                      className="form-control"
+                      placeholder="Enter your email address"
+                      value={enquiryData.email}
+                      onChange={handleEnquiryChange}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label htmlFor="enquiry-phone">
+                      Phone Number *
+                    </label>
+                    <input
+                      id="enquiry-phone"
+                      type="tel"
+                      name="phone"
+                      className="form-control"
+                      placeholder="10-digit mobile number"
+                      value={enquiryData.phone}
+                      onChange={handleEnquiryChange}
+                      pattern="[0-9]{10}"
+                      maxLength={10}
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      title="Enter a 10-digit phone number"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label htmlFor="enquiry-date">
+                      Preferred Joining Date
+                    </label>
+                    <input
+                      id="enquiry-date"
+                      type="date"
+                      name="date"
+                      className="form-control"
+                      min={minimumDate}
+                      value={enquiryData.date}
+                      onChange={handleEnquiryChange}
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label htmlFor="enquiry-message">
+                      Message
+                    </label>
+                    <textarea
+                      id="enquiry-message"
+                      name="message"
+                      className="form-control"
+                      rows="3"
+                      placeholder="Tell us what you would like to know"
+                      value={enquiryData.message}
+                      onChange={handleEnquiryChange}
+                      maxLength={1000}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="course-submit-btn"
+                    disabled={submittingEnquiry}
+                  >
+                    {submittingEnquiry
+                      ? "Submitting..."
+                      : "Submit Enquiry"}
+
+                    <i className="fas fa-arrow-right ms-2"></i>
+                  </button>
+
+                  <p className="course-enquiry-note">
+                    Our team can help you with course details and
+                    joining information.
+                  </p>
+                </form>
+              )}
+            </div>
+          </aside>
         </div>
       )}
     </div>

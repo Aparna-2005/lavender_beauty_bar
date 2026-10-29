@@ -27,6 +27,13 @@ from .models import *
 from .serializers import AppointmentSerializer
 
 
+from datetime import date
+
+from django.db import DatabaseError,IntegrityError
+
+from .models import Courses, CourseEnquiry
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -654,3 +661,119 @@ def add_course(request):
             "success": False,
             "message": str(error)
         }, status=500)
+
+
+
+@csrf_exempt
+@require_POST
+def course_enquiry(request):
+    try:
+        data = json.loads(request.body)
+
+        # Get form data
+        course_name = data.get("course_name", "").strip()
+        student_name = data.get("student_name", "").strip()
+        phone = data.get("phone", "").strip()
+        email = data.get("email", "").strip()
+        joining_date = data.get("joining_date", "").strip()
+        message = data.get("message", "").strip()
+
+        # Validate required fields
+        if not all([
+            course_name,
+            student_name,
+            phone,
+            joining_date
+        ]):
+            return JsonResponse({
+                "success": False,
+                "message": "Please fill in all required fields."
+            }, status=400)
+
+        # Validate student name
+        if len(student_name) > 100:
+            return JsonResponse({
+                "success": False,
+                "message": "Student name cannot exceed 100 characters."
+            }, status=400)
+
+        # Validate phone number
+        if not phone.isdigit() or len(phone) != 10:
+            return JsonResponse({
+                "success": False,
+                "message": "Enter a valid 10-digit phone number."
+            }, status=400)
+
+        # Validate joining date
+        try:
+            parsed_date = date.fromisoformat(joining_date)
+        except ValueError:
+            return JsonResponse({
+                "success": False,
+                "message": "Invalid joining date."
+            }, status=400)
+
+        if parsed_date < date.today():
+            return JsonResponse({
+                "success": False,
+                "message": "Joining date cannot be in the past."
+            }, status=400)
+
+        # Find course using the correct field: name
+        try:
+            course = Courses.objects.get(name=course_name)
+        except Courses.DoesNotExist:
+            return JsonResponse({
+                "success": False,
+                "message": "Selected course was not found."
+            }, status=404)
+        except Courses.MultipleObjectsReturned:
+            return JsonResponse({
+                "success": False,
+                "message": "Multiple courses have the same name. Please contact the administrator."
+            }, status=400)
+
+        # Save enquiry
+        enquiry = CourseEnquiry.objects.create(
+            course_name=course,
+            student_name=student_name,
+            phone=phone,
+            email=email or None,
+            joining_date=parsed_date,
+            message=message
+        )
+
+        # Return success response
+        return JsonResponse({
+            "success": True,
+            "message": "Course enquiry submitted successfully!",
+            "enquiry": {
+                "id": enquiry.id,
+                "course_name": course.name,
+                "student_name": enquiry.student_name,
+                "phone": enquiry.phone,
+                "email": enquiry.email,
+                "joining_date": enquiry.joining_date.isoformat(),
+                "message": enquiry.message
+            }
+        }, status=201)
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            "success": False,
+            "message": "Invalid JSON data."
+        }, status=400)
+
+    except (DatabaseError, IntegrityError):
+        return JsonResponse({
+            "success": False,
+            "message": "Database error while saving the enquiry."
+        }, status=500)
+
+    except Exception as error:
+        return JsonResponse({
+            "success": False,
+            "message": f"Unable to submit enquiry: {str(error)}"
+        }, status=500)
+
+    
